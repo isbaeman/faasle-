@@ -52,6 +52,7 @@ body{margin:0;height:100%;background:#000;color:#fff;font-family:'Great Vibes','
 </head>
 <body>
 <div id="stage"></div>
+<audio id="au" src="faasle.mp3" preload="auto"></audio>
 <button id="pp" type="button">PAUSE</button>
 <script>
 // Timeline: start / end in seconds, one lyric line each. Gaps (e.g. 1:15–2:00) are preserved.
@@ -96,7 +97,8 @@ const L=[
 {s:188,e:190,text:"faasle"}
 ];
 const OUTRO_AT=188,FINAL_AT=188,END_AT=194,FADE_OUT=0.6,LAST=L.length-1;
-const stage=document.getElementById('stage'),btn=document.getElementById('pp');
+const stage=document.getElementById('stage'),btn=document.getElementById('pp'),au=document.getElementById('au');
+let useAudio=true; // falls back to the internal timer if faasle.mp3 can't load
 
 const START_AT=0; // seconds on the timeline to begin from (0 = full 26s music intro)
 let t=START_AT,last=performance.now(),playing=true,done=false,cur=-1,curEl=null;
@@ -130,7 +132,7 @@ function clearStage(){stage.innerHTML='';curEl=null;cur=-1}
 
 function tick(now){
   const dt=Math.min((now-last)/1000,0.5);last=now;
-  if(playing&&!done)t+=dt;
+  if(playing&&!done){ if(useAudio&&!au.paused)t=au.currentTime; else if(!useAudio)t+=dt; }
 
   if(!done){
     let i=L.findIndex(l=>t>=l.s&&t<l.e);
@@ -147,7 +149,7 @@ function tick(now){
       else{curEl.classList.remove('out')}
     }
     if(t>=END_AT){
-      done=true;
+      done=true;au.pause();
       if(curEl){drop(curEl);curEl=null}
       btn.textContent='REPLAY';
     }
@@ -155,13 +157,23 @@ function tick(now){
   requestAnimationFrame(tick);
 }
 
+function startAudio(){
+  au.currentTime=START_AT;
+  const p=au.play();
+  if(p&&p.catch)p.catch(()=>{playing=false;btn.textContent='PLAY'}); // autoplay blocked: wait for a tap
+}
+au.addEventListener('error',()=>{useAudio=false;playing=true;btn.textContent='PAUSE'});
+
 btn.onclick=()=>{
-  if(done){clearStage();t=START_AT;last=performance.now();done=false;playing=true;btn.textContent='PAUSE';return}
+  if(done){clearStage();t=START_AT;last=performance.now();done=false;playing=true;btn.textContent='PAUSE';if(useAudio){au.currentTime=START_AT;au.play()}return}
   playing=!playing;
+  if(useAudio){playing?au.play():au.pause()}
   btn.textContent=playing?'PAUSE':'PLAY';
 };
 
 requestAnimationFrame(n=>{last=n;tick(n)});
+au.addEventListener('loadedmetadata',startAudio,{once:true});
+if(au.readyState>=1)startAudio();
 </script>
 </body>
 </html>
