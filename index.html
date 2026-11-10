@@ -55,7 +55,7 @@ body{margin:0;height:100%;background:#000;color:#fff;font-family:'Great Vibes','
 <audio id="au" src="f.mp3" preload="auto"></audio>
 <button id="pp" type="button">PAUSE</button>
 <script>
-// Timeline: start / end in seconds, one lyric line each. Gaps (e.g. 1:15–2:00) are preserved.
+// Timeline: start / end in seconds, one lyric line each. Gaps are preserved.
 const L=[
 {s:0,e:26.5,music:true,text:""},
 {s:26.6,e:29.35,text:"Beqaraar si thi raatein"},
@@ -85,21 +85,26 @@ const L=[
 {s:144.3,e:148.6,text:"Tujhse tootne mein bhi ek nasha hai"},
 {s:148.5,e:152.5,text:"Hum agar nahin baahon mein teri"},
 {s:152.6,e:157,text:"Kiski phir bhala yeh haseen jagah hai?"},
-{s:157.5,e:160.9,text:"Bezubaan si thi raatein"},
-{s:161,e:164.7,text:"barsi phir jo teri yaadein"},
-{s:163.8,e:167.5,text:"Bikhra jinmein gham yeh tha mera"},
-{s:167.6,e:171,text:"Betuki lagi sharaabein"},
-{s:171.1,e:173.5,text:"bheega jinmein dil yeh mera"},
-{s:173.6,e:176.1,text:"Bewajah tha sab tere bina"},
-{s:176.4,e:179.4,text:"Aa gayi yeh shaam jo"},
+{s:157.5,e:159.9,text:"Bezubaan si thi raatein"},
+{s:160,e:163.3,text:"barsi phir jo teri yaadein"},
+{s:163.4,e:166.5,text:"Bikhra jinmein gham yeh tha mera"},
+{s:166.6,e:169.1,text:"Betuki lagi sharaabein"},
+{s:169.2,e:172.4,text:"bheega jinmein dil yeh mera"},
+{s:172.6,e:175.1,text:"Bewajah tha sab tere bina"},
+{s:175.4,e:179.4,text:"Aa gayi yeh shaam jo"},
 {s:179.6,e:183.7,text:"Toh kal subah ka koi intezaar kyun kare?"},
 {s:183,e:187.3,text:"Dooriyaan khatam huyi"},
-{s:187.4,e:191.4,text:"Khatam huye hain saare faasle,"},
-{s:191.6,e:193.8,text:"faasle"}
+{s:187.4,e:191.4,text:"Khatam huye hain saare "},
+{s:195.6,e:197.8,text:"faasle"}
 ];
-const OUTRO_AT=188.6,FINAL_AT=188.6,END_AT=195,FADE_OUT=0.6,LAST=L.length-1;
+const LAST=L.length-1;
+const OUTRO_AT=L[LAST].s;   // final "faasle" appears here and is held until the audio ends
+const FINAL_AT=L[LAST].s;   // its slow fade-out starts here
+const END_AT=L[LAST].s+6.5; // last lyric fully faded; used when mp3 is missing or ends before the lyrics do
+const FADE_OUT=0.6;
 const stage=document.getElementById('stage'),btn=document.getElementById('pp'),au=document.getElementById('au');
-let useAudio=true; // falls back to the internal timer if faasle.mp3 can't load
+let tail=false; // true = audio already ended but lyrics still remain
+let useAudio=true; // falls back to the internal timer if f.mp3 can't load
 
 const LYRIC_OFFSET=0; // seconds: + shows lyrics earlier, - later (fine-tune sync here)
 const START_AT=0; // seconds on the timeline to begin from (0 = full 26s music intro)
@@ -132,13 +137,20 @@ function build(text){
 function drop(el){if(!el)return;el.classList.add('out');setTimeout(()=>el.remove(),900)}
 function clearStage(){stage.innerHTML='';curEl=null;cur=-1}
 
+function finish(){
+  if(done)return;
+  done=true;au.pause();
+  if(curEl){drop(curEl);curEl=null}
+  btn.textContent='REPLAY';
+}
+
 function tick(now){
   const dt=Math.min((now-last)/1000,0.5);last=now;
-  if(playing&&!done){ if(useAudio&&!au.paused)t=au.currentTime+LYRIC_OFFSET; else if(!useAudio)t+=dt; }
+  if(playing&&!done){ if(useAudio&&!tail){ if(!au.paused)t=au.currentTime+LYRIC_OFFSET; } else t+=dt; }
 
   if(!done){
     let i=L.findIndex(l=>t>=l.s&&t<l.e);
-    if(i<0&&t>=OUTRO_AT)i=LAST;           // hold the final lyric through the outro
+    if(i<0&&t>=OUTRO_AT)i=LAST;           // hold the final lyric until the audio ends
     if(i!==cur){
       if(curEl)drop(curEl);
       curEl=null;cur=i;
@@ -150,11 +162,7 @@ function tick(now){
       }else if(t>=L[cur].e-FADE_OUT){curEl.classList.add('out')}
       else{curEl.classList.remove('out')}
     }
-    if(t>=END_AT){
-      done=true;au.pause();
-      if(curEl){drop(curEl);curEl=null}
-      btn.textContent='REPLAY';
-    }
+    if((!useAudio||tail)&&t>=END_AT)finish(); // timer mode only
   }
   requestAnimationFrame(tick);
 }
@@ -165,11 +173,17 @@ function startAudio(){
   if(p&&p.catch)p.catch(()=>{playing=false;btn.textContent='PLAY'}); // autoplay blocked: wait for a tap
 }
 au.addEventListener('error',()=>{useAudio=false;playing=true;btn.textContent='PAUSE'});
+au.addEventListener('ended',()=>{
+  if(!useAudio)return;
+  t=au.duration+LYRIC_OFFSET;
+  if(t>=END_AT)finish();      // song really finished
+  else tail=true;             // song ended before the last lyric: let the timeline play out
+});
 
 btn.onclick=()=>{
-  if(done){clearStage();t=START_AT;last=performance.now();done=false;playing=true;btn.textContent='PAUSE';if(useAudio){au.currentTime=START_AT;au.play()}return}
+  if(done){clearStage();t=START_AT;last=performance.now();done=false;tail=false;playing=true;btn.textContent='PAUSE';if(useAudio){au.currentTime=START_AT;au.play()}return}
   playing=!playing;
-  if(useAudio){playing?au.play():au.pause()}
+  if(useAudio&&!tail){playing?au.play():au.pause()}
   btn.textContent=playing?'PAUSE':'PLAY';
 };
 
